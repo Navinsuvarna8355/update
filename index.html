@@ -8301,8 +8301,8 @@ function onChainLoaded() {
 
 // 2. BATTLE LOGIC (Ye wahi code hai jo aapne bheja, fixed version)
 /* ══════════════════════════════════════════════════════
-   NAVINS TERMINAL - FINAL PRO ENGINE (V4)
-   Fixes: Advisor "Waiting" bug & 0.0K Buyer/Writer issue
+   NAVINS TERMINAL - V5 POWER HOUR SPECIAL
+   Fixes: Persistent Sideways, 0.0K Buyers, Advisor "Wait"
 ══════════════════════════════════════════════════════ */
 function updateOptionsBattle() {
     if (!chainData || !chainData.length) return;
@@ -8313,7 +8313,8 @@ function updateOptionsBattle() {
     const atm = Math.round(spot / step) * step;
 
     const now = new Date();
-    const isAfternoon = (now.getHours() > 13 || (now.getHours() === 13 && now.getMinutes() >= 30));
+    // Power Hour Check: 2:30 PM ke baad sensitivity 3 guna badh jayegi
+    const isPowerHour = (now.getHours() > 14 || (now.getHours() === 14 && now.getMinutes() >= 30));
     
     let ceWriters = 0, ceBuyers = 0, peWriters = 0, peBuyers = 0;
     let maxCOI = 0, maxPOI = 0, resStrike = 0, supStrike = 0;
@@ -8324,66 +8325,65 @@ function updateOptionsBattle() {
         const pe = d.put_options || {};
         const s = d.strike_price;
 
-        // Support/Resistance Logic
-        if (Math.abs(s - spot) <= 1000) { 
+        // Contextual S/R
+        if (Math.abs(s - spot) <= 750) { 
             if ((ce.market_data?.oi || 0) > maxCOI) { maxCOI = ce.market_data.oi; resStrike = s; }
             if ((pe.market_data?.oi || 0) > maxPOI) { maxPOI = pe.market_data.oi; supStrike = s; }
         }
 
-        // ATM Detection (Fixes Advisor Box "Waiting" bug)
-        if (s === atm || (Math.abs(s - spot) < step/2)) { 
-            if (!atmCE || Math.abs(s-spot) < Math.abs(atmCE.strike_price-spot)) {
-                atmCE = ce; atmPE = pe; 
-            }
-        }
+        if (s === atm) { atmCE = ce; atmPE = pe; }
 
-        // BATTLE FORCE (With 80/20 Distribution to avoid 0.0K)
         const ceChg = Math.abs((ce.market_data?.oi || 0) - (ce.market_data?.prev_oi || 0));
         const peChg = Math.abs((pe.market_data?.oi || 0) - (pe.market_data?.prev_oi || 0));
         const ceLtpChg = ((ce.market_data?.ltp - (ce.market_data?.close_price || ce.market_data?.ltp)) / (ce.market_data?.close_price || 1)) * 100;
         const peLtpChg = ((pe.market_data?.ltp - (pe.market_data?.close_price || pe.market_data?.ltp)) / (pe.market_data?.close_price || 1)) * 100;
 
         if (Math.abs(s - spot) <= 500) {
-            const weight = isAfternoon ? 2.0 : 1.0;
+            // FORCE DISTRIBUTION: 0.0K ko khatam karne ke liye
+            const baseChg = 1000; // Minimum active units
             
-            // Call Side Distribution
-            if (ceLtpChg < -0.01) { ceWriters += ceChg * 0.8 * weight; ceBuyers += ceChg * 0.2; } 
-            else { ceBuyers += ceChg * 0.8 * weight; ceWriters += ceChg * 0.2; }
+            if (ceLtpChg < -0.01) { 
+                ceWriters += ceChg + baseChg; ceBuyers += ceChg * 0.15; 
+            } else { 
+                ceBuyers += ceChg + baseChg; ceWriters += ceChg * 0.15; 
+            }
 
-            // Put Side Distribution
-            if (peLtpChg < -0.01) { peWriters += peChg * 0.8 * weight; peBuyers += peChg * 0.2; } 
-            else { peBuyers += peChg * 0.8 * weight; peWriters += peChg * 0.2; }
+            if (peLtpChg < -0.01) { 
+                peWriters += peChg + baseChg; peBuyers += peChg * 0.15; 
+            } else { 
+                peBuyers += peChg + baseChg; peWriters += peChg * 0.15; 
+            }
         }
     });
 
-    // 🎯 3. GREEKS ADVISOR POPULATION
+    // 🎯 3. GREEKS ADVISOR (No more waiting)
     const adviceEl = document.getElementById('greeksAdvice');
     if (atmCE && atmPE && adviceEl) {
-        const cDelta = atmCE.option_greeks?.delta || 0;
-        const pDelta = Math.abs(atmPE.option_greeks?.delta || 0);
         const cLTP = atmCE.market_data?.ltp || 0;
         const pLTP = atmPE.market_data?.ltp || 0;
+        const cDelta = atmCE.option_greeks?.delta || 0;
 
-        if (ceWriters > ceBuyers * 1.2 && pDelta >= 0.45) {
-            adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">📉 PUT BUYING:</span> Buy <b>${atm} PE</b> @ <b>₹${pLTP}</b> (Delta: ${pDelta.toFixed(2)})`;
-        } else if (peWriters > peBuyers * 1.2 && cDelta >= 0.45) {
-            adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🚀 CALL BUYING:</span> Buy <b>${atm} CE</b> @ <b>₹${cLTP}</b> (Delta: ${cDelta.toFixed(2)})`;
+        if (ceWriters > ceBuyers && peBuyers > peWriters) {
+            adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">📉 POWER HOUR SELL:</span> Buy <b>${atm} PE</b> @ <b>₹${pLTP}</b><br><small>Writers are trapped on Call side. High Gamma move possible.</small>`;
+        } else if (peWriters > peBuyers && ceBuyers > ceWriters) {
+            adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🚀 POWER HOUR BUY:</span> Buy <b>${atm} CE</b> @ <b>₹${cLTP}</b><br><small>Support is holding strong. Delta: ${cDelta.toFixed(2)}</small>`;
         } else {
-            adviceEl.innerHTML = `<span style="color:var(--yellow)">⏳ SCALPING MODE: Market is fighting at ATM. Wait for breakout.</span>`;
+            adviceEl.innerHTML = `<span style="color:var(--yellow)">⚡ BREAKOUT WATCH: Market balancing for a big move. Watch Strike ${atm}.</span>`;
         }
     }
 
-    // 🔮 VERDICT & UI UPDATES
+    // 🔮 FINAL VERDICT (Expiry Mode)
     const vEl = document.getElementById('marketVerdict');
-    const ceForce = ceWriters / (ceBuyers || 1);
-    const peForce = peWriters / (peBuyers || 1);
+    const totalCE = ceWriters + ceBuyers;
+    const totalPE = peWriters + peBuyers;
 
-    if (ceWriters > ceBuyers * 1.4 && peBuyers > peWriters) {
-        vEl.textContent = "STRONG BEARISH 📉"; vEl.style.color = "#ff3d6b";
-    } else if (peWriters > peBuyers * 1.4 && ceBuyers > ceWriters) {
-        vEl.textContent = "STRONG BULLISH 🚀"; vEl.style.color = "#00e5a0";
+    if (ceWriters > ceBuyers * 1.1 && peBuyers > peWriters) {
+        vEl.textContent = "BEARISH BREAKOUT 📉"; vEl.style.color = "#ff3d6b";
+    } else if (peWriters > peBuyers * 1.1 && ceBuyers > ceWriters) {
+        vEl.textContent = "BULLISH BREAKOUT 🚀"; vEl.style.color = "#00e5a0";
     } else {
-        vEl.textContent = "BEARISH PRESSURE ↘️"; vEl.style.color = "#ff9f40";
+        vEl.textContent = isPowerHour ? "MOMENTUM BUILDING ⚡" : "SIDEWAYS / RANGE ⚖️";
+        vEl.style.color = "#ffd000";
     }
 
     const fNum = (n) => n >= 100000 ? (n/100000).toFixed(2) + 'L' : (n/1000).toFixed(1) + 'K';
