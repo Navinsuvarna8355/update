@@ -8372,6 +8372,50 @@ function updateOptionsBattle() {
             adviceEl.innerHTML = `<span style="color:var(--yellow)">⏳ SCALPING MODE: Market is fighting at ATM. Wait for breakout.</span>`;
         }
     }
+	// 🏆 3. UI UPDATES (Labels, Numbers & Verdict)
+    const cwEl = document.getElementById('callWinner');
+    const pwEl = document.getElementById('putWinner');
+    const vEl = document.getElementById('marketVerdict');
+
+    // Labels Update: Dash ko status se badalne ke liye
+    if (cwEl) {
+        cwEl.innerHTML = ceWriters > ceBuyers 
+            ? '<span style="color:#ff3d6b">WRITERS DOMINANT 🔴</span>' 
+            : '<span style="color:#00e5a0">BUYERS DOMINANT 🟢</span>';
+    }
+    if (pwEl) {
+        pwEl.innerHTML = peWriters > peBuyers 
+            ? '<span style="color:#00e5a0">WRITERS DOMINANT 🟢</span>' 
+            : '<span style="color:#ff3d6b">BUYERS DOMINANT 🔴</span>';
+    }
+
+    // Verdict Logic (Buying vs Selling Mode)
+    if (ceWriters > ceBuyers * 2.5 && peBuyers > peWriters) {
+        vEl.textContent = "MOMENTUM BEARISH (PUT BUY) 📉"; vEl.style.color = "#ff3d6b";
+    } else if (peWriters > peBuyers * 2.5 && ceBuyers > ceWriters) {
+        vEl.textContent = "MOMENTUM BULLISH (CALL BUY) 🚀"; vEl.style.color = "#00e5a0";
+    } else if (ceWriters > ceBuyers * 1.5 && peWriters > peBuyers * 1.5) {
+        vEl.textContent = "SELLER SUPPORT (RANGE) ⚖️"; vEl.style.color = "#ffd000";
+    } else {
+        vEl.textContent = "BEARISH PRESSURE ↘️"; vEl.style.color = "#ff9f40";
+    }
+
+    // Numbers & Levels Display
+    const fNum = (n) => n >= 100000 ? (n/100000).toFixed(2) + 'L' : (n/1000).toFixed(1) + 'K';
+    
+    document.getElementById('ceWriteVal').textContent = fNum(ceWriters);
+    document.getElementById('ceBuyVal').textContent = fNum(ceBuyers);
+    document.getElementById('peWriteVal').textContent = fNum(peWriters);
+    document.getElementById('peBuyVal').textContent = fNum(peBuyers);
+    document.getElementById('strongResist').textContent = resStrike || '—';
+    document.getElementById('strongSupport').textContent = supStrike || '—';
+
+    // Progress Bars (Visual Feed)
+    const ceTotal = ceWriters + ceBuyers || 1;
+    const peTotal = peWriters + peBuyers || 1;
+    if(document.getElementById('ceBar')) document.getElementById('ceBar').style.width = (ceWriters / ceTotal * 100) + '%';
+    if(document.getElementById('peBar')) document.getElementById('peBar').style.width = (peWriters / peTotal * 100) + '%';
+}
 
     // 🔮 VERDICT & UI UPDATES
     const vEl = document.getElementById('marketVerdict');
