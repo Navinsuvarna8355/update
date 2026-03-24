@@ -8301,13 +8301,23 @@ function onChainLoaded() {
 
 // 2. BATTLE LOGIC (Ye wahi code hai jo aapne bheja, fixed version)
 /* ══════════════════════════════════════════════════════
-   NAVINS PRO TERMINAL - ULTIMATE STABLE ENGINE (V9)
-   Fixes: Zero Data Bug, Label Dash Bug, and Buy/Sell Logic
+   NAVINS PRO TERMINAL - FINAL INTEGRATED ENGINE
+   Base: Navin's Stable Code | Added: Dual Advisor & Dash Fix
 ══════════════════════════════════════════════════════ */
+
+// 1. GLOBAL TRIGGER (Ye connection kabhi nahi tootne dega)
+function onChainLoaded() {
+    if (window.chainData && window.chainData.length > 0) {
+        updateOptionsBattle(); 
+        if (typeof updateSentimentDash === 'function') updateSentimentDash();
+    }
+}
+
+// 2. MAIN FUNCTION
 function updateOptionsBattle() {
-    // 1. DATA VALIDATION (Prevents Zeros)
-    const data = window.chainData || [];
-    if (data.length === 0) return;
+    // window.chainData use karein taaki global scope se data mil sake
+    const data = window.chainData;
+    if (!data || !data.length) return;
 
     const spot = data[0].underlying_spot_price;
     const instrKey = document.getElementById('symbolSel')?.value || 'NIFTY';
@@ -8315,52 +8325,54 @@ function updateOptionsBattle() {
     const atm = Math.round(spot / step) * step;
 
     const now = new Date();
-    // After 2:30 PM, sensitivity increases for Expiry moves
+    // Power Hour: 2:30 PM ke baad weight badh jayega
     const isPowerHour = (now.getHours() > 14 || (now.getHours() === 14 && now.getMinutes() >= 30));
-    
+    const weight = isPowerHour ? 2.5 : 1.0;
+
     let ceWriters = 0, ceBuyers = 0, peWriters = 0, peBuyers = 0;
     let maxCOI = 0, maxPOI = 0, resStrike = 0, supStrike = 0;
     let atmCE = null, atmPE = null;
+    const friction = 0.01;
 
     data.forEach(d => {
         const ce = d.call_options || {};
         const pe = d.put_options || {};
-        const ceMD = ce.market_data || {};
-        const peMD = pe.market_data || {};
         const s = d.strike_price;
 
-        // LOCAL S/R (±750 range)
-        if (Math.abs(s - spot) <= 750) { 
-            if ((ceMD.oi || 0) > maxCOI) { maxCOI = ceMD.oi; resStrike = s; }
-            if ((peMD.oi || 0) > maxPOI) { maxPOI = peMD.oi; supStrike = s; }
+        // 1. INTRADAY S/R (±500 points)
+        if (Math.abs(s - spot) <= 500) { 
+            if ((ce.market_data?.oi || 0) > maxCOI) { maxCOI = ce.market_data.oi; resStrike = s; }
+            if ((pe.market_data?.oi || 0) > maxPOI) { maxPOI = pe.market_data.oi; supStrike = s; }
         }
 
         if (s === atm) { atmCE = ce; atmPE = pe; }
 
-        // BATTLE FORCE CALCULATION
+        const ceMD = ce.market_data || {};
+        const peMD = pe.market_data || {};
         const ceChg = Math.abs((ceMD.oi || 0) - (ceMD.prev_oi || 0));
         const peChg = Math.abs((peMD.oi || 0) - (peMD.prev_oi || 0));
         
         const ceLtpBase = ceMD.close_price || ceMD.ltp || 1;
         const ceLtpChg = ((ceMD.ltp - ceLtpBase) / ceLtpBase) * 100;
-
         const peLtpBase = peMD.close_price || peMD.ltp || 1;
         const peLtpChg = ((peMD.ltp - peLtpBase) / peLtpBase) * 100;
 
+        // 2. DISTRIBUTION (Navin's Stable Logic)
         if (Math.abs(s - spot) <= 500) {
-            const weight = isPowerHour ? 3.0 : 1.0;
-            
-            // Call Side Distribution (Fixes 0.0K)
-            if (ceLtpChg < -0.01) { ceWriters += ceChg * 0.85 * weight; ceBuyers += ceChg * 0.15; } 
-            else { ceBuyers += ceChg * 0.85 * weight; ceWriters += ceChg * 0.15; }
-
-            // Put Side Distribution (Fixes 0.0K)
-            if (peLtpChg < -0.01) { peWriters += peChg * 0.85 * weight; peBuyers += peChg * 0.15; } 
-            else { peBuyers += peChg * 0.85 * weight; peWriters += peChg * 0.15; }
+            if (ceChg > 0) {
+                if (ceLtpChg < -friction) { ceWriters += ceChg * 0.85 * weight; ceBuyers += ceChg * 0.15; }
+                else if (ceLtpChg > friction) { ceBuyers += ceChg * 0.85 * weight; ceWriters += ceChg * 0.15; }
+                else { ceWriters += ceChg * 0.5; ceBuyers += ceChg * 0.5; }
+            }
+            if (peChg > 0) {
+                if (peLtpChg < -friction) { peWriters += peChg * 0.85 * weight; peBuyers += peChg * 0.15; }
+                else if (peLtpChg > friction) { peBuyers += peChg * 0.85 * weight; peWriters += peChg * 0.15; }
+                else { peWriters += peChg * 0.5; peBuyers += peChg * 0.5; }
+            }
         }
     });
 
-    // 🏆 2. UI LABELS UPDATE (Dash "-" Fix)
+    // 🏆 UI UPDATE: LABELS (Fixes Dash Bug)
     const cwEl = document.getElementById('callWinner');
     const pwEl = document.getElementById('putWinner');
     if (cwEl) cwEl.innerHTML = ceWriters > ceBuyers ? '<span style="color:#ff3d6b">WRITERS DOMINANT 🔴</span>' : '<span style="color:#00e5a0">BUYERS DOMINANT 🟢</span>';
@@ -8373,20 +8385,20 @@ function updateOptionsBattle() {
         const pLTP = atmPE.market_data?.ltp || 0;
         const pDelta = Math.abs(atmPE.option_greeks?.delta || 0);
 
-        if (ceWriters > ceBuyers * 2.2) {
+        if (ceWriters > ceBuyers * 2.5) {
             adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">📉 PE BUYING:</span> Buy <b>${atm} PE</b> @ <b>₹${pLTP}</b> (Delta: ${pDelta.toFixed(2)})`;
-        } else if (peWriters > peBuyers * 2.2) {
+        } else if (peWriters > peBuyers * 2.5) {
             adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🚀 CE BUYING:</span> Buy <b>${atm} CE</b> @ <b>₹${cLTP}</b>`;
         } else if (ceWriters > ceBuyers * 1.5) {
             adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">🧱 CALL SELLING:</span> Sell <b>${atm} CE</b> @ <b>₹${cLTP}</b> (Theta Advantage)`;
         } else if (peWriters > peBuyers * 1.5) {
-            adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🛡️ PUT SELLING:</span> Sell <b>${atm} PE</b> @ <b>₹${pLTP}</b> (Support Edge)`;
+            adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🛡️ PUT SELLING:</span> Sell <b>${atm} PE</b> @ <b>₹${pLTP}</b> (Base Support)`;
         } else {
-            adviceEl.innerHTML = `<span style="color:#ffd000">⏳ RANGEBOUND: Market is fighting at ATM. No clear edge.</span>`;
+            adviceEl.innerHTML = `<span style="color:var(--yellow)">⏳ RANGEBOUND: Scalping avoid karein.</span>`;
         }
     }
 
-    // 🔮 4. FINAL VERDICT & NUMBERS
+    // 🔮 4. FINAL VERDICT
     const vEl = document.getElementById('marketVerdict');
     if (vEl) {
         if (ceWriters > ceBuyers * 1.5 && peBuyers > peWriters) { vEl.textContent = "STRONG BEARISH 📉"; vEl.style.color = "#ff3d6b"; }
@@ -8394,6 +8406,7 @@ function updateOptionsBattle() {
         else { vEl.textContent = isPowerHour ? "MOMENTUM PRESSURE ⚡" : "SIDEWAYS ⚖️"; vEl.style.color = "#ffd000"; }
     }
 
+    // Numbers Update
     const fNum = (n) => n >= 100000 ? (n/100000).toFixed(2) + 'L' : (n/1000).toFixed(1) + 'K';
     document.getElementById('ceWriteVal').textContent = fNum(ceWriters);
     document.getElementById('ceBuyVal').textContent = fNum(ceBuyers);
