@@ -8301,98 +8301,116 @@ function onChainLoaded() {
 
 // 2. BATTLE LOGIC (Ye wahi code hai jo aapne bheja, fixed version)
 /* ══════════════════════════════════════════════════════
-   NAVINS TERMINAL - V5 POWER HOUR SPECIAL
-   Fixes: Persistent Sideways, 0.0K Buyers, Advisor "Wait"
+   NAVINS PRO TERMINAL - ULTIMATE BATTLE ENGINE (FINAL)
+   Fixes: 0.0K Display, Dash Labels, and Power Hour Accuracy
 ══════════════════════════════════════════════════════ */
 function updateOptionsBattle() {
-    if (!chainData || !chainData.length) return;
+    // 1. DATA VALIDATION
+    if (!window.chainData || !window.chainData.length) return;
 
-    const spot = chainData[0].underlying_spot_price;
+    const spot = window.chainData[0].underlying_spot_price;
     const instrKey = document.getElementById('symbolSel').value;
-    const step = INSTRUMENTS[instrKey]?.step || 50;
+    const step = (instrKey === 'NIFTY') ? 50 : 100; // Auto-detect step
     const atm = Math.round(spot / step) * step;
 
+    // Time Check: Expiry Power Hour (After 2:30 PM)
     const now = new Date();
-    // Power Hour Check: 2:30 PM ke baad sensitivity 3 guna badh jayegi
     const isPowerHour = (now.getHours() > 14 || (now.getHours() === 14 && now.getMinutes() >= 30));
     
     let ceWriters = 0, ceBuyers = 0, peWriters = 0, peBuyers = 0;
     let maxCOI = 0, maxPOI = 0, resStrike = 0, supStrike = 0;
     let atmCE = null, atmPE = null;
 
-    chainData.forEach(d => {
-        const ce = d.call_options || {};
-        const pe = d.put_options || {};
+    // 2. MAIN PROCESSING LOOP
+    window.chainData.forEach(d => {
+        const ce = d.call_options?.market_data || {};
+        const pe = d.put_options?.market_data || {};
         const s = d.strike_price;
 
-        // Contextual S/R
+        // LOCAL SUPPORT/RESISTANCE (Within ±750 points)
         if (Math.abs(s - spot) <= 750) { 
-            if ((ce.market_data?.oi || 0) > maxCOI) { maxCOI = ce.market_data.oi; resStrike = s; }
-            if ((pe.market_data?.oi || 0) > maxPOI) { maxPOI = pe.market_data.oi; supStrike = s; }
+            if ((ce.oi || 0) > maxCOI) { maxCOI = ce.oi; resStrike = s; }
+            if ((pe.oi || 0) > maxPOI) { maxPOI = pe.oi; supStrike = s; }
         }
 
-        if (s === atm) { atmCE = ce; atmPE = pe; }
+        // ATM Detection for Advisor
+        if (s === atm) { atmCE = d.call_options; atmPE = d.put_options; }
 
-        const ceChg = Math.abs((ce.market_data?.oi || 0) - (ce.market_data?.prev_oi || 0));
-        const peChg = Math.abs((pe.market_data?.oi || 0) - (pe.market_data?.prev_oi || 0));
-        const ceLtpChg = ((ce.market_data?.ltp - (ce.market_data?.close_price || ce.market_data?.ltp)) / (ce.market_data?.close_price || 1)) * 100;
-        const peLtpChg = ((pe.market_data?.ltp - (pe.market_data?.close_price || pe.market_data?.ltp)) / (pe.market_data?.close_price || 1)) * 100;
+        // BATTLE FORCE CALCULATION (±500 points range)
+        const ceChg = Math.abs((ce.oi || 0) - (ce.prev_oi || 0));
+        const peChg = Math.abs((pe.oi || 0) - (pe.prev_oi || 0));
+        const ceLtpChg = ((ce.ltp - (ce.close_price || ce.ltp)) / (ce.close_price || 1)) * 100;
+        const peLtpChg = ((pe.ltp - (pe.close_price || pe.ltp)) / (pe.close_price || 1)) * 100;
 
         if (Math.abs(s - spot) <= 500) {
-            // FORCE DISTRIBUTION: 0.0K ko khatam karne ke liye
-            const baseChg = 1000; // Minimum active units
-            
+            const weight = isPowerHour ? 2.5 : 1.0; // High sensitivity in Power Hour
+
+            // 85/15 Proportional Distribution (Fixes 0.0K)
             if (ceLtpChg < -0.01) { 
-                ceWriters += ceChg + baseChg; ceBuyers += ceChg * 0.15; 
+                ceWriters += ceChg * 0.85 * weight; ceBuyers += ceChg * 0.15; 
             } else { 
-                ceBuyers += ceChg + baseChg; ceWriters += ceChg * 0.15; 
+                ceBuyers += ceChg * 0.85 * weight; ceWriters += ceChg * 0.15; 
             }
 
             if (peLtpChg < -0.01) { 
-                peWriters += peChg + baseChg; peBuyers += peChg * 0.15; 
+                peWriters += peChg * 0.85 * weight; peBuyers += peChg * 0.15; 
             } else { 
-                peBuyers += peChg + baseChg; peWriters += peChg * 0.15; 
+                peBuyers += peChg * 0.85 * weight; peWriters += peChg * 0.15; 
             }
         }
     });
 
-    // 🎯 3. GREEKS ADVISOR (No more waiting)
+    // 3. UI UPDATES (Labels & Numbers)
+    const fNum = (n) => n >= 100000 ? (n/100000).toFixed(2) + 'L' : (n/1000).toFixed(1) + 'K';
+    
+    document.getElementById('ceWriteVal').textContent = fNum(ceWriters);
+    document.getElementById('ceBuyVal').textContent = fNum(ceBuyers);
+    document.getElementById('peWriteVal').textContent = fNum(peWriters);
+    document.getElementById('peBuyVal').textContent = fNum(peBuyers);
+    document.getElementById('strongResist').textContent = resStrike || '—';
+    document.getElementById('strongSupport').textContent = supStrike || '—';
+
+    // FIXING THE DASH (—) BUG
+    const cwEl = document.getElementById('callWinner');
+    const pwEl = document.getElementById('putWinner');
+    if (cwEl && pwEl) {
+        cwEl.innerHTML = ceWriters > ceBuyers ? '<span style="color:#ff3d6b">WRITERS DOMINANT 🔴</span>' : '<span style="color:#00e5a0">BUYERS DOMINANT 🟢</span>';
+        pwEl.innerHTML = peWriters > peBuyers ? '<span style="color:#00e5a0">WRITERS DOMINANT 🟢</span>' : '<span style="color:#ff3d6b">BUYERS DOMINANT 🔴</span>';
+    }
+
+    // 4. GREEKS BUYING ADVISOR
     const adviceEl = document.getElementById('greeksAdvice');
     if (atmCE && atmPE && adviceEl) {
         const cLTP = atmCE.market_data?.ltp || 0;
         const pLTP = atmPE.market_data?.ltp || 0;
         const cDelta = atmCE.option_greeks?.delta || 0;
+        const pDelta = Math.abs(atmPE.option_greeks?.delta || 0);
 
-        if (ceWriters > ceBuyers && peBuyers > peWriters) {
-            adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">📉 POWER HOUR SELL:</span> Buy <b>${atm} PE</b> @ <b>₹${pLTP}</b><br><small>Writers are trapped on Call side. High Gamma move possible.</small>`;
-        } else if (peWriters > peBuyers && ceBuyers > ceWriters) {
-            adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🚀 POWER HOUR BUY:</span> Buy <b>${atm} CE</b> @ <b>₹${cLTP}</b><br><small>Support is holding strong. Delta: ${cDelta.toFixed(2)}</small>`;
+        if (ceWriters > ceBuyers * 1.3 && peBuyers > peWriters) {
+            adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">📉 PUT BUYING:</span> Buy <b>${atm} PE</b> @ <b>₹${pLTP}</b> (Delta: ${pDelta.toFixed(2)})`;
+        } else if (peWriters > peBuyers * 1.3 && ceBuyers > ceWriters) {
+            adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🚀 CALL BUYING:</span> Buy <b>${atm} CE</b> @ <b>₹${cLTP}</b> (Delta: ${cDelta.toFixed(2)})`;
         } else {
-            adviceEl.innerHTML = `<span style="color:var(--yellow)">⚡ BREAKOUT WATCH: Market balancing for a big move. Watch Strike ${atm}.</span>`;
+            adviceEl.innerHTML = `<span style="color:var(--yellow)">⚡ MOMENTUM BUILDING: Market balancing for a move near ${atm}.</span>`;
         }
     }
 
-    // 🔮 FINAL VERDICT (Expiry Mode)
+    // 5. FINAL VERDICT
     const vEl = document.getElementById('marketVerdict');
-    const totalCE = ceWriters + ceBuyers;
-    const totalPE = peWriters + peBuyers;
-
-    if (ceWriters > ceBuyers * 1.1 && peBuyers > peWriters) {
-        vEl.textContent = "BEARISH BREAKOUT 📉"; vEl.style.color = "#ff3d6b";
-    } else if (peWriters > peBuyers * 1.1 && ceBuyers > ceWriters) {
-        vEl.textContent = "BULLISH BREAKOUT 🚀"; vEl.style.color = "#00e5a0";
+    if (ceWriters > ceBuyers * 1.5 && peBuyers > peWriters) {
+        vEl.textContent = "STRONG BEARISH 📉"; vEl.style.color = "#ff3d6b";
+    } else if (peWriters > peBuyers * 1.5 && ceBuyers > ceWriters) {
+        vEl.textContent = "STRONG BULLISH 🚀"; vEl.style.color = "#00e5a0";
     } else {
-        vEl.textContent = isPowerHour ? "MOMENTUM BUILDING ⚡" : "SIDEWAYS / RANGE ⚖️";
+        vEl.textContent = isPowerHour ? "VOLATILE MOMENTUM ⚡" : "SIDEWAYS / RANGE ⚖️";
         vEl.style.color = "#ffd000";
     }
 
-    const fNum = (n) => n >= 100000 ? (n/100000).toFixed(2) + 'L' : (n/1000).toFixed(1) + 'K';
-    document.getElementById('ceWriteVal').textContent = fNum(ceWriters);
-    document.getElementById('ceBuyVal').textContent = fNum(ceBuyers);
-    document.getElementById('peWriteVal').textContent = fNum(peWriters);
-    document.getElementById('peBuyVal').textContent = fNum(peBuyers);
-    document.getElementById('strongResist').textContent = resStrike;
-    document.getElementById('strongSupport').textContent = supStrike;
+    // 6. PROGRESS BARS
+    const ceTotal = ceWriters + ceBuyers || 1;
+    const peTotal = peWriters + peBuyers || 1;
+    document.getElementById('ceBar').style.width = (ceWriters / ceTotal * 100) + '%';
+    document.getElementById('peBar').style.width = (peWriters / peTotal * 100) + '%';
 }
 </script>
 </body>
