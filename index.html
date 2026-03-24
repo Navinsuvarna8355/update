@@ -8259,8 +8259,50 @@ function exportSignalLogs() {
 
 // [old updateSignalLogs removed]
 /* ══════════════════════════════════════════════════════
-   NAVINS TERMINAL - HYPER SENSITIVE ENGINE (V3)
-   Fixes: Sideways Trap on Expiry Afternoon
+   OPTIONS BATTLEGROUND - PRO ENGINE (SHURU SE)
+══════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════
+   NAVINS PRO TERMINAL - FINAL INTEGRATED ENGINE
+   Fixes: Advisor Box, 0.0K Issue, and Level Distance
+══════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════
+   NAVINS PRO TERMINAL - MASTER BLOCK (Trigger + Fixed Logic)
+   Fixes: Data Loading, 0.0K Issue, and Level Proximity
+══════════════════════════════════════════════════════ */
+
+// 1. DATA TRIGGER (Ye Upstox se data aate hi sab chalu karega)
+function onChainLoaded() {
+    const spot = (chainData && chainData[0]) ? chainData[0].underlying_spot_price : 0;
+    if (spot <= 0) return;
+
+    // Saare functions ko EK baar call karein
+    updateOptionsBattle(); 
+    calcBuyingDanger();
+    updateSentimentDash();
+    updateTradeSetup();
+    updateOITracker();
+    checkPriceAlerts(spot);
+    runAlerts();
+    renderHeatmap();
+
+    // Charts aur Storage
+    if (oiAutoSave) saveOISnapshot();
+    updateOIStorageUI();
+    populateCandleStrikes();
+    buildStrategy(activeStrategy);
+    recordPriceActionSnapshot();
+    updatePriceActionStrikes();
+    renderPriceAction();
+
+    // Signal Logging
+    if (typeof checkAndLogSignals === 'function') checkAndLogSignals(spot);
+    if (typeof updateSignalLogs === 'function') updateSignalLogs(spot);
+}
+
+// 2. BATTLE LOGIC (Ye wahi code hai jo aapne bheja, fixed version)
+/* ══════════════════════════════════════════════════════
+   NAVINS TERMINAL - EXPIRY SPECIAL TREND ENGINE
+   Fixes: Sideways Trap, Catching Small Moves after 1:30 PM
 ══════════════════════════════════════════════════════ */
 function updateOptionsBattle() {
     if (!chainData || !chainData.length) return;
@@ -8270,13 +8312,17 @@ function updateOptionsBattle() {
     const step = INSTRUMENTS[instrKey]?.step || 50;
     const atm = Math.round(spot / step) * step;
 
-    // Time Sensitivity: 1:30 PM ke baad logic badal jayega
+    // Time Check: Kya 1:30 PM ke baad ka waqt hai? (Expiry Day High Volatility)
     const now = new Date();
     const isAfternoon = (now.getHours() > 13 || (now.getHours() === 13 && now.getMinutes() >= 30));
     
     let ceWriters = 0, ceBuyers = 0, peWriters = 0, peBuyers = 0;
     let maxCOI = 0, maxPOI = 0, resStrike = 0, supStrike = 0;
     let atmCE = null, atmPE = null;
+
+    // --- SENSITIVITY ADJUSTMENT ---
+    // Afternoon mein logic 2x sensitive ho jayega
+    const trendSensitivity = isAfternoon ? 1.15 : 1.35; 
 
     chainData.forEach(d => {
         const ce = d.call_options || {};
@@ -8293,42 +8339,48 @@ function updateOptionsBattle() {
         // BATTLE FORCE CALCULATION
         const ceChg = (ce.market_data?.oi || 0) - (ce.market_data?.prev_oi || 0);
         const peChg = (pe.market_data?.oi || 0) - (pe.market_data?.prev_oi || 0);
+        
         const ceLtpChg = ((ce.market_data?.ltp - (ce.market_data?.close_price || ce.market_data?.ltp)) / (ce.market_data?.close_price || 1)) * 100;
         const peLtpChg = ((pe.market_data?.ltp - (pe.market_data?.close_price || pe.market_data?.ltp)) / (pe.market_data?.close_price || 1)) * 100;
 
         if (Math.abs(s - spot) <= 500) {
-            // Afternoon mein "OI Change" aur "LTP Speed" ka weight 2 guna badha diya
-            const weight = isAfternoon ? 2.5 : 1.0;
+            // CALL SIDE (Writers vs Buyers)
+            if (ceLtpChg < -0.01) { ceWriters += (ce.market_data?.oi * 0.1) + Math.abs(ceChg); } 
+            else { ceBuyers += (ce.market_data?.oi * 0.1) + Math.abs(ceChg); }
 
-            if (ceLtpChg < -0.01) { ceWriters += (Math.abs(ceChg) * weight); } 
-            else { ceBuyers += (Math.abs(ceChg) * weight); }
-
-            if (peLtpChg < -0.01) { peWriters += (Math.abs(peChg) * weight); } 
-            else { peBuyers += (Math.abs(peChg) * weight); }
+            // PUT SIDE
+            if (peLtpChg < -0.01) { peWriters += (pe.market_data?.oi * 0.1) + Math.abs(peChg); } 
+            else { peBuyers += (pe.market_data?.oi * 0.1) + Math.abs(peChg); }
         }
     });
 
-    // 🔮 HYPER VERDICT ENGINE
+    // 🎯 GREEKS ADVISOR (Enhanced for afternoon momentum)
+    const adviceEl = document.getElementById('greeksAdvice');
+    if (atmCE && atmPE && adviceEl) {
+        const cDelta = atmCE.option_greeks?.delta || 0;
+        const pDelta = Math.abs(atmPE.option_greeks?.delta || 0);
+        const cLTP = atmCE.market_data?.ltp || 0;
+        const pLTP = atmPE.market_data?.ltp || 0;
+
+        if (peBuyers > peWriters * 1.1 && cLTP > atmCE.market_data?.close_price) {
+            adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🚀 MOMENTUM CALL:</span> Buy <b>${atm} CE</b> @ <b>₹${cLTP}</b> (Bullish trend confirmed)`;
+        } else if (ceBuyers > ceWriters * 1.1 && pLTP > atmPE.market_data?.close_price) {
+            adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">📉 MOMENTUM PUT:</span> Buy <b>${atm} PE</b> @ <b>₹${pLTP}</b> (Bearish trend confirmed)`;
+        } else {
+            adviceEl.innerHTML = `<span style="color:var(--muted)">⏳ WAIT: Market is consolidating near ATM.</span>`;
+        }
+    }
+
+    // 🔮 VERDICT ENGINE (No more Sideways Trap)
     const vEl = document.getElementById('marketVerdict');
-    const cwEl = document.getElementById('callWinner');
-    const pwEl = document.getElementById('putWinner');
-
-    // Winner Labels Update
-    cwEl.innerHTML = ceWriters > ceBuyers ? '<span style="color:#ff3d6b">WRITERS DOMINANT 🔴</span>' : '<span style="color:#00e5a0">BUYERS DOMINANT 🟢</span>';
-    pwEl.innerHTML = peWriters > peBuyers ? '<span style="color:#00e5a0">WRITERS DOMINANT 🟢</span>' : '<span style="color:#ff3d6b">BUYERS DOMINANT 🔴</span>';
-
-    // Proportional Battle Ratios
-    const ceForce = ceWriters / (ceBuyers || 1);
-    const peForce = peBuyers / (peWriters || 1);
-
-    if (ceForce > 1.2 && peForce > 1.2) {
+    if (ceWriters > ceBuyers * trendSensitivity && peBuyers > peWriters) {
         vEl.textContent = "STRONG BEARISH 📉"; vEl.style.color = "#ff3d6b";
-    } else if (peWriters > peBuyers * 1.2 && ceBuyers > ceWriters * 1.2) {
+    } else if (peWriters > peBuyers * trendSensitivity && ceBuyers > ceWriters) {
         vEl.textContent = "STRONG BULLISH 🚀"; vEl.style.color = "#00e5a0";
-    } else if (isAfternoon && ceWriters > ceBuyers * 1.1) {
-        vEl.textContent = "BEARISH PRESSURE ↘️"; vEl.style.color = "#ff9f40";
+    } else if (ceBuyers > ceWriters && peWriters > peBuyers) {
+        vEl.textContent = "VOLATILE RECOVERY ↗️"; vEl.style.color = "#00c9ff";
     } else {
-        vEl.textContent = "SIDEWAYS / RANGE ⚖️"; vEl.style.color = "#ffd000";
+        vEl.textContent = "SIDEWAYS / RANGEBOUND ⚖️"; vEl.style.color = "#ffd000";
     }
 
     // Numbers display
