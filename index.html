@@ -8362,54 +8362,11 @@ function updateOptionsBattle() {
 
     // 🎯 3. DUAL ADVISOR: BUY vs SELL (Latest Update)
     const adviceEl = document.getElementById('greeksAdvice');
-if (atmCE && atmPE && adviceEl) {
-    const cLTP = atmCE.market_data?.ltp || 0;
-    const pLTP = atmPE.market_data?.ltp || 0;
-    const time = new Date().toLocaleTimeString('en-IN'); // Log ke liye time
-    const symbol = document.getElementById('symbolSel')?.value || 'NIFTY';
-
-    // 🎯 SIGNAL LOGGING ENGINE (Integrating with Master Signal Tester)
-    
-    // CASE 1: PE BUYING (Momentum Bearish)
-    if (ceWriters > ceBuyers * 2.5 && peBuyers > peWriters) {
-        const notes = `PE BUY: ${atm} PE @ ₹${pLTP}`;
-        adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">📉 PE BUYING:</span> ${notes}`;
-        
-        // Table mein record karne ke liye (MST Integration)
-        if (typeof registerSignalLog === 'function') {
-            registerSignalLog('Battleground', 'BEAR', spot, time, symbol, notes);
-        }
-    } 
-    // CASE 2: CE BUYING (Breakout Bullish)
-    else if (peWriters > peBuyers * 2.5 && ceBuyers > ceWriters) {
-        const notes = `CE BUY: ${atm} CE @ ₹${cLTP}`;
-        adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🚀 CE BUYING:</span> ${notes}`;
-        
-        if (typeof registerSignalLog === 'function') {
-            registerSignalLog('Battleground', 'BULL', spot, time, symbol, notes);
-        }
-    } 
-    // CASE 3: CALL SELLING (Seller Advantage)
-    else if (ceWriters > ceBuyers * 1.5 && ceWriters > peWriters) {
-        const notes = `CE SELL: ${atm} CE @ ₹${cLTP}`;
-        adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">🧱 CALL SELLING:</span> ${notes}`;
-        
-        if (typeof registerSignalLog === 'function') {
-            registerSignalLog('Battleground', 'BEAR', spot, time, symbol, notes);
-        }
-    } 
-    // CASE 4: PUT SELLING (Support Edge)
-    else if (peWriters > peBuyers * 1.5 && peWriters > ceWriters) {
-        const notes = `PE SELL: ${atm} PE @ ₹${pLTP}`;
-        adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🛡️ PUT SELLING:</span> ${notes}`;
-        
-        if (typeof registerSignalLog === 'function') {
-            registerSignalLog('Battleground', 'BULL', spot, time, symbol, notes);
-        }
-    } else {
-        adviceEl.innerHTML = `<span style="color:#ffd000">⏳ RANGEBOUND: Scalping avoid karein.</span>`;
-    }
-}
+    if (atmCE && atmPE && adviceEl) {
+        const cLTP = atmCE.market_data?.ltp || 0;
+        const pLTP = atmPE.market_data?.ltp || 0;
+        const cDelta = atmCE.option_greeks?.delta || 0;
+        const pDelta = Math.abs(atmPE.option_greeks?.delta || 0);
 
         // MOMENTUM MODE (High Force = Buying)
         if (ceWriters > ceBuyers * 2.5 && pDelta >= 0.45) {
