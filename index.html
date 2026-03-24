@@ -8378,21 +8378,48 @@ function updateOptionsBattle() {
         pwEl.innerHTML = peWriters > peBuyers ? '<span style="color:#00e5a0">WRITERS DOMINANT 🟢</span>' : '<span style="color:#ff3d6b">BUYERS DOMINANT 🔴</span>';
     }
 
-    // 4. GREEKS BUYING ADVISOR
+    // 🎯 4. PRO BUY/SELL ADVISOR (DYNAMIC ENGINE)
     const adviceEl = document.getElementById('greeksAdvice');
     if (atmCE && atmPE && adviceEl) {
         const cLTP = atmCE.market_data?.ltp || 0;
         const pLTP = atmPE.market_data?.ltp || 0;
         const cDelta = atmCE.option_greeks?.delta || 0;
         const pDelta = Math.abs(atmPE.option_greeks?.delta || 0);
+        const ceRatio = ceWriters / (ceBuyers || 1);
+        const peRatio = peWriters / (peBuyers || 1);
 
-        if (ceWriters > ceBuyers * 1.3 && peBuyers > peWriters) {
-            adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">📉 PUT BUYING:</span> Buy <b>${atm} PE</b> @ <b>₹${pLTP}</b> (Delta: ${pDelta.toFixed(2)})`;
-        } else if (peWriters > peBuyers * 1.3 && ceBuyers > ceWriters) {
-            adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🚀 CALL BUYING:</span> Buy <b>${atm} CE</b> @ <b>₹${cLTP}</b> (Delta: ${cDelta.toFixed(2)})`;
-        } else {
-            adviceEl.innerHTML = `<span style="color:var(--yellow)">⚡ MOMENTUM BUILDING: Market balancing for a move near ${atm}.</span>`;
+        let adviceHtml = "";
+
+        // --- CASE 1: STRONG MOMENTUM (BUYING MODE) ---
+        if (ceWriters > ceBuyers * 2.5 && peBuyers > peWriters) {
+            adviceHtml = `<span style="color:var(--red); font-weight:bold;">📉 PE BUYING:</span> Buy <b>${atm} PE</b> @ <b>₹${pLTP}</b><br>
+                          <small>Speed: High Delta (${pDelta.toFixed(2)}) | Trap: Put writers are escaping.</small>`;
+        } 
+        else if (peWriters > peBuyers * 2.5 && ceBuyers > ceWriters) {
+            adviceHtml = `<span style="color:var(--green); font-weight:bold;">🚀 CE BUYING:</span> Buy <b>${atm} CE</b> @ <b>₹${cLTP}</b><br>
+                          <small>Speed: High Delta (${cDelta.toFixed(2)}) | Force: Support is massive.</small>`;
         }
+
+        // --- CASE 2: SELLER SUPPORT (WRITING MODE) ---
+        // Jab Writers bahut heavy hon par market direction clear na ho
+        else if (ceWriters > ceBuyers * 1.5 && peWriters > peBuyers * 1.5) {
+            adviceHtml = `<span style="color:var(--yellow); font-weight:bold;">🛡️ SELLER SUPPORT (RANGE):</span><br>
+                          <span style="color:var(--red)">SELL ${atm+100} CE</span> & <span style="color:var(--green)">SELL ${atm-100} PE</span><br>
+                          <small>Strategy: Short Straddle/Strangle. Earn from Theta Decay.</small>`;
+        }
+        else if (ceWriters > ceBuyers * 1.8 && peWriters < peBuyers) {
+            adviceHtml = `<span style="color:var(--red); font-weight:bold;">🧱 CALL SELLING:</span> Sell <b>${atm} CE</b> @ <b>₹${cLTP}</b><br>
+                          <small>Safe Play: Resistance is solid. Call Writers are dominant.</small>`;
+        }
+        else if (peWriters > peBuyers * 1.8 && ceWriters < ceBuyers) {
+            adviceHtml = `<span style="color:var(--green); font-weight:bold;">🛡️ PUT SELLING:</span> Sell <b>${atm} PE</b> @ <b>₹${pLTP}</b><br>
+                          <small>Safe Play: Base is strong. Put Writers are defending.</small>`;
+        }
+        else {
+            adviceHtml = `<span style="color:var(--muted)">⏳ NO CLEAR EDGE: Market is in tight consolidation. No Buy/Sell signal.</span>`;
+        }
+
+        adviceEl.innerHTML = adviceHtml;
     }
 
     // 5. FINAL VERDICT
