@@ -8262,58 +8262,21 @@ function exportSignalLogs() {
    OPTIONS BATTLEGROUND - PRO ENGINE (SHURU SE)
 ══════════════════════════════════════════════════════ */
 /* ══════════════════════════════════════════════════════
-   NAVINS PRO TERMINAL - FINAL INTEGRATED ENGINE
-   Fixes: Advisor Box, 0.0K Issue, and Level Distance
-══════════════════════════════════════════════════════ */
-/* ══════════════════════════════════════════════════════
-   NAVINS PRO TERMINAL - MASTER BLOCK (Trigger + Fixed Logic)
-   Fixes: Data Loading, 0.0K Issue, and Level Proximity
-══════════════════════════════════════════════════════ */
-
-// 1. DATA TRIGGER (Ye Upstox se data aate hi sab chalu karega)
-function onChainLoaded() {
-    const spot = (chainData && chainData[0]) ? chainData[0].underlying_spot_price : 0;
-    if (spot <= 0) return;
-
-    // Saare functions ko EK baar call karein
-    updateOptionsBattle(); 
-    calcBuyingDanger();
-    updateSentimentDash();
-    updateTradeSetup();
-    updateOITracker();
-    checkPriceAlerts(spot);
-    runAlerts();
-    renderHeatmap();
-
-    // Charts aur Storage
-    if (oiAutoSave) saveOISnapshot();
-    updateOIStorageUI();
-    populateCandleStrikes();
-    buildStrategy(activeStrategy);
-    recordPriceActionSnapshot();
-    updatePriceActionStrikes();
-    renderPriceAction();
-
-    // Signal Logging
-    if (typeof checkAndLogSignals === 'function') checkAndLogSignals(spot);
-    if (typeof updateSignalLogs === 'function') updateSignalLogs(spot);
-}
-
-// 2. BATTLE LOGIC (Ye wahi code hai jo aapne bheja, fixed version)
-/* ══════════════════════════════════════════════════════
-   NAVINS PRO TERMINAL - ULTIMATE BATTLE ENGINE (FINAL)
-   Fixes: 0.0K Display, Dash Labels, and Power Hour Accuracy
+   NAVINS TERMINAL - BUY/SELL DUAL ENGINE (POWER HOUR)
+   Fixes: Zero Data, Dash Labels, and Seller/Buyer Signals
 ══════════════════════════════════════════════════════ */
 function updateOptionsBattle() {
-    // 1. DATA VALIDATION
-    if (!window.chainData || !window.chainData.length) return;
+    // 1. DATA VALIDATION: Taki zero na dikhe
+    if (!window.chainData || !window.chainData.length) {
+        console.log("Waiting for data...");
+        return;
+    }
 
     const spot = window.chainData[0].underlying_spot_price;
-    const instrKey = document.getElementById('symbolSel').value;
-    const step = (instrKey === 'NIFTY') ? 50 : 100; // Auto-detect step
+    const instrKey = document.getElementById('symbolSel')?.value || 'NIFTY';
+    const step = (instrKey === 'NIFTY') ? 50 : 100;
     const atm = Math.round(spot / step) * step;
 
-    // Time Check: Expiry Power Hour (After 2:30 PM)
     const now = new Date();
     const isPowerHour = (now.getHours() > 14 || (now.getHours() === 14 && now.getMinutes() >= 30));
     
@@ -8321,48 +8284,58 @@ function updateOptionsBattle() {
     let maxCOI = 0, maxPOI = 0, resStrike = 0, supStrike = 0;
     let atmCE = null, atmPE = null;
 
-    // 2. MAIN PROCESSING LOOP
     window.chainData.forEach(d => {
         const ce = d.call_options?.market_data || {};
         const pe = d.put_options?.market_data || {};
         const s = d.strike_price;
 
-        // LOCAL SUPPORT/RESISTANCE (Within ±750 points)
+        // LOCAL S/R (±750 range)
         if (Math.abs(s - spot) <= 750) { 
             if ((ce.oi || 0) > maxCOI) { maxCOI = ce.oi; resStrike = s; }
             if ((pe.oi || 0) > maxPOI) { maxPOI = pe.oi; supStrike = s; }
         }
 
-        // ATM Detection for Advisor
         if (s === atm) { atmCE = d.call_options; atmPE = d.put_options; }
 
-        // BATTLE FORCE CALCULATION (±500 points range)
+        // BATTLE FORCE CALCULATION
         const ceChg = Math.abs((ce.oi || 0) - (ce.prev_oi || 0));
         const peChg = Math.abs((pe.oi || 0) - (pe.prev_oi || 0));
         const ceLtpChg = ((ce.ltp - (ce.close_price || ce.ltp)) / (ce.close_price || 1)) * 100;
         const peLtpChg = ((pe.ltp - (pe.close_price || pe.ltp)) / (pe.close_price || 1)) * 100;
 
         if (Math.abs(s - spot) <= 500) {
-            const weight = isPowerHour ? 2.5 : 1.0; // High sensitivity in Power Hour
+            const weight = isPowerHour ? 2.5 : 1.0;
+            // 85/15 Distribution (No more 0.0K)
+            if (ceLtpChg < -0.01) { ceWriters += ceChg * 0.85 * weight; ceBuyers += ceChg * 0.15; }
+            else { ceBuyers += ceChg * 0.85 * weight; ceWriters += ceChg * 0.15; }
 
-            // 85/15 Proportional Distribution (Fixes 0.0K)
-            if (ceLtpChg < -0.01) { 
-                ceWriters += ceChg * 0.85 * weight; ceBuyers += ceChg * 0.15; 
-            } else { 
-                ceBuyers += ceChg * 0.85 * weight; ceWriters += ceChg * 0.15; 
-            }
-
-            if (peLtpChg < -0.01) { 
-                peWriters += peChg * 0.85 * weight; peBuyers += peChg * 0.15; 
-            } else { 
-                peBuyers += peChg * 0.85 * weight; peWriters += peChg * 0.15; 
-            }
+            if (peLtpChg < -0.01) { peWriters += peChg * 0.85 * weight; peBuyers += peChg * 0.15; }
+            else { peBuyers += peChg * 0.85 * weight; peWriters += peChg * 0.15; }
         }
     });
 
-    // 3. UI UPDATES (Labels & Numbers)
+    // 🎯 2. PRO ADVISOR: BUY vs SELL LOGIC
+    const adviceEl = document.getElementById('greeksAdvice');
+    if (atmCE && atmPE && adviceEl) {
+        const cLTP = atmCE.market_data?.ltp || 0;
+        const pLTP = atmPE.market_data?.ltp || 0;
+        
+        // --- SELLING VS BUYING LOGIC ---
+        if (ceWriters > ceBuyers * 2.5 && peBuyers > peWriters) {
+            adviceEl.innerHTML = `<span style="color:var(--red); font-weight:bold;">📉 PE BUYING:</span> Buy <b>${atm} PE</b> @ <b>₹${pLTP}</b> (Momentum Play)`;
+        } else if (peWriters > peBuyers * 2.5 && ceBuyers > ceWriters) {
+            adviceEl.innerHTML = `<span style="color:var(--green); font-weight:bold;">🚀 CE BUYING:</span> Buy <b>${atm} CE</b> @ <b>₹${cLTP}</b> (Breakout Play)`;
+        } else if (ceWriters > ceBuyers * 1.5 && ceWriters > peWriters) {
+            adviceEl.innerHTML = `<span style="color:var(--red); font-weight:bold;">🧱 CALL SELLING:</span> Sell <b>${atm} CE</b> @ <b>₹${cLTP}</b> (Seller Support - Safe Play)`;
+        } else if (peWriters > peBuyers * 1.5 && peWriters > ceWriters) {
+            adviceEl.innerHTML = `<span style="color:var(--green); font-weight:bold;">🛡️ PUT SELLING:</span> Sell <b>${atm} PE</b> @ <b>₹${pLTP}</b> (Seller Support - Safe Play)`;
+        } else {
+            adviceEl.innerHTML = `<span style="color:var(--yellow)">⏳ CONSOLIDATION: Writers are fighting. No clear edge.</span>`;
+        }
+    }
+
+    // 🔮 3. UI UPDATES
     const fNum = (n) => n >= 100000 ? (n/100000).toFixed(2) + 'L' : (n/1000).toFixed(1) + 'K';
-    
     document.getElementById('ceWriteVal').textContent = fNum(ceWriters);
     document.getElementById('ceBuyVal').textContent = fNum(ceBuyers);
     document.getElementById('peWriteVal').textContent = fNum(peWriters);
@@ -8370,13 +8343,14 @@ function updateOptionsBattle() {
     document.getElementById('strongResist').textContent = resStrike || '—';
     document.getElementById('strongSupport').textContent = supStrike || '—';
 
-    // FIXING THE DASH (—) BUG
-    const cwEl = document.getElementById('callWinner');
-    const pwEl = document.getElementById('putWinner');
-    if (cwEl && pwEl) {
-        cwEl.innerHTML = ceWriters > ceBuyers ? '<span style="color:#ff3d6b">WRITERS DOMINANT 🔴</span>' : '<span style="color:#00e5a0">BUYERS DOMINANT 🟢</span>';
-        pwEl.innerHTML = peWriters > peBuyers ? '<span style="color:#00e5a0">WRITERS DOMINANT 🟢</span>' : '<span style="color:#ff3d6b">BUYERS DOMINANT 🔴</span>';
-    }
+    document.getElementById('callWinner').innerHTML = ceWriters > ceBuyers ? '<span style="color:var(--red)">WRITERS DOMINANT 🔴</span>' : '<span style="color:var(--green)">BUYERS DOMINANT 🟢</span>';
+    document.getElementById('putWinner').innerHTML = peWriters > peBuyers ? '<span style="color:var(--green)">WRITERS DOMINANT 🟢</span>' : '<span style="color:var(--red)">BUYERS DOMINANT 🔴</span>';
+
+    const vEl = document.getElementById('marketVerdict');
+    if (ceWriters > ceBuyers * 1.5 && peBuyers > peWriters) { vEl.textContent = "STRONG BEARISH 📉"; vEl.style.color = "var(--red)"; }
+    else if (peWriters > peBuyers * 1.5 && ceBuyers > ceWriters) { vEl.textContent = "STRONG BULLISH 🚀"; vEl.style.color = "var(--green)"; }
+    else { vEl.textContent = isPowerHour ? "MOMENTUM PRESSURE ⚡" : "SIDEWAYS ⚖️"; vEl.style.color = "var(--yellow)"; }
+}
 
     // 🎯 4. PRO BUY/SELL ADVISOR (DYNAMIC ENGINE)
     const adviceEl = document.getElementById('greeksAdvice');
