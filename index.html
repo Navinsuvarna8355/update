@@ -8388,7 +8388,6 @@ function updateOptionsBattle() {
             ? '<span style="color:#00e5a0">WRITERS DOMINANT 🟢</span>' 
             : '<span style="color:#ff3d6b">BUYERS DOMINANT 🔴</span>';
     }
-
     // Verdict Logic (Buying vs Selling Mode)
     if (ceWriters > ceBuyers * 2.5 && peBuyers > peWriters) {
         vEl.textContent = "MOMENTUM BEARISH (PUT BUY) 📉"; vEl.style.color = "#ff3d6b";
