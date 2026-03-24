@@ -8021,91 +8021,44 @@ function toast(msg, isErr = false) {
 
 <script>
 /* ══════════════════════════════════════════════════════
-   NAVINS PRO TERMINAL - ALL-IN-ONE MASTER ENGINE
-   Includes: Navigation, Signal Tester, and Power Hour Engine
+   NAVINS PRO TERMINAL - ULTIMATE REPAIR SCRIPT (V8)
+   Fixes: Zero Data, Multiple Definitions, and Dual Advisor
 ══════════════════════════════════════════════════════ */
 
-// 1. UI & NAVIGATION LOGIC
-(function(){
-  function checkMobileNav() {
-    const nav = document.getElementById('mobileNav');
-    if (!nav) return;
-    if (window.innerWidth <= 768) {
-      nav.style.display = 'block';
-      document.querySelector('.app').style.paddingBottom = '72px';
-      const hint = document.getElementById('scrollHint');
-      if (hint) hint.style.display = 'block';
-    } else {
-      nav.style.display = 'none';
-      if(document.querySelector('.app')) document.querySelector('.app').style.paddingBottom = '0';
-    }
-  }
-  window.addEventListener('resize', checkMobileNav);
-  window.addEventListener('DOMContentLoaded', checkMobileNav);
-  checkMobileNav();
-
-  document.addEventListener('scroll', () => {
-    const hint = document.getElementById('scrollHint');
-    if (hint) hint.style.display = 'none';
-  }, { once: true, passive: true });
-
-  window.mobileScrollTo = function(key) {
-    const textMap = { chain:'OPTION CHAIN', ai:'AI MARKET', unusual:'UNUSUAL', wa:'WHATSAPP' };
-    const panels = document.querySelectorAll('.section-panel');
-    let found = null;
-    panels.forEach(p => {
-      if (textMap[key] && p.textContent.toUpperCase().includes(textMap[key])) found = p;
-    });
-    if (found) found.scrollIntoView({behavior:'smooth', block:'start'});
-  };
-})();
-
-// 2. MASTER SIGNAL TESTER VARIABLES
-let strategyLogs = [];
-
-// 3. THE DATA TRIGGER (The Heart of the Terminal)
-function onChainLoaded() {
-    if (!window.chainData || !window.chainData.length) return;
+// 1. DATA TRIGGER (Global Connection)
+window.onChainLoaded = function() {
+    if (!window.chainData || window.chainData.length === 0) return;
+    
     const spot = window.chainData[0].underlying_spot_price;
-    if (spot <= 0) return;
+    
+    // Sabhi functions ko ek saath call karein
+    try {
+        updateOptionsBattle(); 
+        if (typeof updateSentimentDash === 'function') updateSentimentDash();
+        if (typeof checkAndLogSignals === 'function') checkAndLogSignals(spot);
+        if (typeof updateSignalLogs === 'function') updateSignalLogs(spot);
+        if (typeof renderHeatmap === 'function') renderHeatmap();
+    } catch(e) { console.error("Update Error:", e); }
+};
 
-    // A. Run Battleground Engine
-    updateOptionsBattle(); 
-
-    // B. Run Supplementary Dashboards (Safe Calls)
-    if (typeof calcBuyingDanger === 'function') calcBuyingDanger();
-    if (typeof updateSentimentDash === 'function') updateSentimentDash();
-    if (typeof updateTradeSetup === 'function') updateTradeSetup();
-    if (typeof updateOITracker === 'function') updateOITracker();
-    if (typeof checkPriceAlerts === 'function') checkPriceAlerts(spot);
-    if (typeof runAlerts === 'function') runAlerts();
-    if (typeof renderHeatmap === 'function') renderHeatmap();
-
-    // C. Signal Logging Engine
-    checkAndLogSignals(spot);
-    updateSignalLogs(spot);
-
-    // D. Storage & Charts
-    if (typeof oiAutoSave !== 'undefined' && oiAutoSave && typeof saveOISnapshot === 'function') saveOISnapshot();
-}
-
-// 4. THE MASTER FUNCTION: updateOptionsBattle (Dual Mode Buy/Sell)
+// 2. THE MASTER ENGINE: updateOptionsBattle
 function updateOptionsBattle() {
-    if (!window.chainData || !window.chainData.length) return;
+    const data = window.chainData;
+    if (!data || !data.length) return;
 
-    const spot = window.chainData[0].underlying_spot_price;
+    const spot = data[0].underlying_spot_price;
     const instrKey = document.getElementById('symbolSel')?.value || 'NIFTY';
     const step = (instrKey === 'NIFTY') ? 50 : 100;
     const atm = Math.round(spot / step) * step;
 
-    const now = new Date();
-    const isPowerHour = (now.getHours() > 14 || (now.getHours() === 14 && now.getMinutes() >= 30));
+    // Power Hour Sensitivity (3:00 PM peak)
+    const weight = 3.5; 
     
     let ceWriters = 0, ceBuyers = 0, peWriters = 0, peBuyers = 0;
     let maxCOI = 0, maxPOI = 0, resStrike = 0, supStrike = 0;
     let atmCE = null, atmPE = null;
 
-    window.chainData.forEach(d => {
+    data.forEach(d => {
         const ce = d.call_options?.market_data || {};
         const pe = d.put_options?.market_data || {};
         const s = d.strike_price;
@@ -8123,7 +8076,6 @@ function updateOptionsBattle() {
         const peLtpChg = ((pe.ltp - (pe.close_price || pe.ltp)) / (pe.close_price || 1)) * 100;
 
         if (Math.abs(s - spot) <= 500) {
-            const weight = isPowerHour ? 3.0 : 1.0; 
             if (ceLtpChg < -0.01) { ceWriters += ceChg * 0.85 * weight; ceBuyers += ceChg * 0.15; } 
             else { ceBuyers += ceChg * 0.85 * weight; ceWriters += ceChg * 0.15; }
 
@@ -8132,36 +8084,36 @@ function updateOptionsBattle() {
         }
     });
 
-    // 🏆 UI UPDATE: LABELS (Fixes Dash Bug)
+    // 🏆 UI LABELS (Dash "-" Fix)
     const cwEl = document.getElementById('callWinner');
     const pwEl = document.getElementById('putWinner');
     if (cwEl) cwEl.innerHTML = ceWriters > ceBuyers ? '<span style="color:#ff3d6b">WRITERS DOMINANT 🔴</span>' : '<span style="color:#00e5a0">BUYERS DOMINANT 🟢</span>';
     if (pwEl) pwEl.innerHTML = peWriters > peBuyers ? '<span style="color:#00e5a0">WRITERS DOMINANT 🟢</span>' : '<span style="color:#ff3d6b">BUYERS DOMINANT 🔴</span>';
 
-    // 🎯 PRO ADVISOR: BUY vs SELL
+    // 🎯 DUAL ADVISOR (Buy vs Sell)
     const adviceEl = document.getElementById('greeksAdvice');
     if (atmCE && atmPE && adviceEl) {
         const cLTP = atmCE.market_data?.ltp || 0;
         const pLTP = atmPE.market_data?.ltp || 0;
-        if (ceWriters > ceBuyers * 2.5 && peBuyers > peWriters) {
-            adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">📉 PE BUYING:</span> Buy <b>${atm} PE</b> @ <b>₹${pLTP}</b>`;
-        } else if (peWriters > peBuyers * 2.5 && ceBuyers > ceWriters) {
+        const pDelta = Math.abs(atmPE.option_greeks?.delta || 0);
+
+        if (ceWriters > ceBuyers * 2.2) {
+            adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">📉 PE BUYING:</span> Buy <b>${atm} PE</b> @ <b>₹${pLTP}</b> (Delta: ${pDelta.toFixed(2)})`;
+        } else if (peWriters > peBuyers * 2.2) {
             adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🚀 CE BUYING:</span> Buy <b>${atm} CE</b> @ <b>₹${cLTP}</b>`;
-        } else if (ceWriters > ceBuyers * 1.5) {
-            adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">🧱 CALL SELLING:</span> Sell <b>${atm} CE</b> @ <b>₹${cLTP}</b>`;
-        } else if (peWriters > peBuyers * 1.5) {
-            adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🛡️ PUT SELLING:</span> Sell <b>${atm} PE</b> @ <b>₹${pLTP}</b>`;
-        } else {
-            adviceEl.innerHTML = `<span style="color:#ffd000">⏳ RANGE: Consolidation near ${atm}.</span>`;
+        } else if (ceWriters > peWriters) {
+            adviceEl.innerHTML = `<span style="color:#ff3d6b; font-weight:bold;">🧱 CALL SELLING:</span> Sell <b>${atm} CE</b> @ <b>₹${cLTP}</b> (Theta Advantage)`;
+        } else if (peWriters > ceWriters) {
+            adviceEl.innerHTML = `<span style="color:#00e5a0; font-weight:bold;">🛡️ PUT SELLING:</span> Sell <b>${atm} PE</b> @ <b>₹${pLTP}</b> (Base Support)`;
         }
     }
 
-    // 🔮 FINAL VERDICT & DISPLAY
+    // 🔮 FINAL VERDICT & NUMBERS
     const vEl = document.getElementById('marketVerdict');
     if (vEl) {
         if (ceWriters > ceBuyers * 1.5 && peBuyers > peWriters) { vEl.textContent = "STRONG BEARISH 📉"; vEl.style.color = "#ff3d6b"; }
         else if (peWriters > peBuyers * 1.5 && ceBuyers > ceWriters) { vEl.textContent = "STRONG BULLISH 🚀"; vEl.style.color = "#00e5a0"; }
-        else { vEl.textContent = isPowerHour ? "MOMENTUM PRESSURE ⚡" : "SIDEWAYS ⚖️"; vEl.style.color = "#ffd000"; }
+        else { vEl.textContent = "MOMENTUM PRESSURE ⚡"; vEl.style.color = "#ffd000"; }
     }
 
     const fNum = (n) => n >= 100000 ? (n/100000).toFixed(2) + 'L' : (n/1000).toFixed(1) + 'K';
@@ -8173,39 +8125,14 @@ function updateOptionsBattle() {
     document.getElementById('strongSupport').textContent = supStrike || '—';
 }
 
-// 5. SIGNAL ENGINE FUNCTIONS
-function checkAndLogSignals(spot) {
-  if (!window.chainData || !spot) return;
-  const time = new Date().toLocaleTimeString('en-IN');
-  // AI, EMA, and OI Spike logic runs here...
-  // (Preserved from your original script)
-}
-
-function registerSignalLog(source, type, entrySpot, time, symbol, notes) {
-  const cooldownMs = (source === 'OI Build' || source === 'OI Spike') ? 30 * 60 * 1000 : 5 * 60 * 1000;
-  const isDuplicate = strategyLogs.some(log => log.source === source && log.type === type && (new Date() - new Date(log.timestampObj)) < cooldownMs);
-  if (isDuplicate) return;
-  strategyLogs.push({ id: Date.now(), timestampObj: new Date().toISOString(), time, source, type, symbol, entrySpot, currentSpot: entrySpot, maxFavorable: 0, maxAdverse: 0, notes });
-  renderSignalLogs();
-}
-
-function updateSignalLogs(currentSpot) {
-  strategyLogs.forEach(log => {
-    log.currentSpot = currentSpot;
-    const move = currentSpot - log.entrySpot;
-    const pnl = log.type === 'BULL' ? move : -move;
-    if (pnl > log.maxFavorable) log.maxFavorable = pnl;
-    if (pnl < log.maxAdverse) log.maxAdverse = pnl;
-  });
-  renderSignalLogs();
-}
-
-function renderSignalLogs() {
-  const tbody = document.getElementById('logTableBody');
-  if (!tbody || !strategyLogs.length) return;
-  const sorted = [...strategyLogs].sort((a,b) => b.id - a.id).slice(0, 50);
-  tbody.innerHTML = sorted.map(log => `<tr>...</tr>`).join('');
-}
+// 3. NAVIGATION & MOBILE FIXES
+(function(){
+  window.mobileScrollTo = function(key) {
+    const textMap = { chain:'OPTION CHAIN', ai:'AI MARKET' };
+    const panels = document.querySelectorAll('.section-panel');
+    panels.forEach(p => { if (p.textContent.toUpperCase().includes(textMap[key])) p.scrollIntoView({behavior:'smooth'}); });
+  };
+})();
 </script>
 </body>
 </html>
